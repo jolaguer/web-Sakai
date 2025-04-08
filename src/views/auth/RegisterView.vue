@@ -11,7 +11,7 @@ import Registerform from '@/components/auth/Registerform.vue'
           <v-card class="mx-auto" elevation="24">
             <v-img src="/images/jeje.jpg" height="200"></v-img>
             <v-card-title class="text-center">
-              <h3 class="font-weight-black text-center">Sakai</h3>
+              <h3 class="font-weight-black text-center">BajajXpress</h3>
               <p>register</p>
             </v-card-title>
 

@@ -12,7 +12,7 @@ import LoginForm from '@/components/auth/LoginForm.vue'
             <v-img src="/images/jeje.jpg" height="200"></v-img>
 
             <v-card-title class="text-center">
-              <h3 class="font-weight-black text-center">Sakai</h3>
+              <h3 class="font-weight-black text-center">BajajXpress</h3>
               <p>Login Form</p>
             </v-card-title>
 

@@ -27,7 +27,7 @@ function onClick() {
         </v-container>
       </v-main>
 
-      <v-footer border app>SAKAI-2025</v-footer>
+      <v-footer border app>Copyright-2025</v-footer>
     </v-app>
   </v-responsive>
 </template>
