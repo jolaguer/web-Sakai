@@ -22,12 +22,10 @@ function onClick() {
       </v-app-bar>
 
       <v-main>
-        <v-container>
-          <slot name="content"></slot>
-        </v-container>
+        <slot name="content"></slot>
       </v-main>
 
-      <v-footer border app>SAKAI-2025</v-footer>
+      <v-footer border app>Copyright-2025</v-footer>
     </v-app>
   </v-responsive>
 </template>
