@@ -6,6 +6,7 @@ import {
   confirmValidator,
 } from '@/utils/validators'
 import { ref } from 'vue'
+import AlertNotification from '@/components/common/AlertNotification.vue'
 import { supabase, formActionDefault } from '@/utils/supabase.js'
 
 const formDataDefault = {
@@ -54,9 +55,9 @@ if(error) {
   console.log(data)
   formAction.value.formSuccessMessage = 'Successfully Registered Account'
   //add more actions here if you want
-  refVform.value?.reset()
+  
 }
-
+refVform.value?.reset()
 formAction.value.formProcess = false
 }
 const onFormSubmit = () => {
@@ -67,29 +68,12 @@ const onFormSubmit = () => {
 </script>
 
 <template>
-  <v-alert
-  v-if="formAction.formSuccessMessage"
-  :text="formAction.formSuccessMessage"
-  title="Success!"
-  type="success"
-  variant="tonal"
-  density="compact"
-  border="start"
-  closable
-  ></v-alert>
+  <AlertNotification 
+  :form-success-message="formAction.formSuccessMessage" 
+  :form-error-message="formAction.formErrorMessage"
+  ></AlertNotification>
 
-  <v-alert
-  v-if="formAction.formErrorMessage"
-  :text="formAction.formErrorMessage"
-  title="Oooops!!"
-  type="error"
-  variant="tonal"
-  density="compact"
-  border="start"
-  closable
-  ></v-alert>
-
-  <v-form ref="refVform" @submit.prevent="onFormSubmit">
+  <v-form class="mt-5" ref="refVform" @submit.prevent="onFormSubmit">
     <v-row>
     <v-col cols="12" md="12">
       <v-text-field
@@ -153,3 +137,5 @@ const onFormSubmit = () => {
   </v-row>
   </v-form>
 </template>
+
+<!-- debug edit -->
