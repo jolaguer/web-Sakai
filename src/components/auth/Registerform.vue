@@ -6,9 +6,14 @@ import {
   confirmValidator,
 } from '@/utils/validators'
 import { ref } from 'vue'
+import { supabase } from '@/supabase'
+import { useRouter } from 'vue-router'
+
+
+const router = useRouter()
 
 const formDataDefault = {
-  firsname: '',
+  firstname: '', // Fixed typo from 'firsname'
   lastname: '',
   email: '',
   password: '',
@@ -22,22 +27,57 @@ const formData = ref({
 const isPasswordVisible = ref(false)
 const isPasswordConfirmation = ref(false)
 const refVform = ref()
+const loading = ref(false)
+const errorMessage = ref('')
 
-const onSubmit = () => {
-  alert(formData.value.email)
+const onSubmit = async () => {
+  try {
+    loading.value = true
+    errorMessage.value = ''
+    
+    // Sign up with Supabase
+    const { data, error } = await supabase.auth.signUp({
+      email: formData.value.email,
+      password: formData.value.password,
+      options: {
+        data: {
+          first_name: formData.value.firstname,
+          last_name: formData.value.lastname,
+        }
+      }
+    })
+    
+    if (error) throw error
+    
+    // If successful, show success message or redirect
+    alert('Registration successful! Please check your email for confirmation.')
+    router.push('/dashboard')
+    // Reset form
+    formData.value = { ...formDataDefault }
+    
+  } catch (error) {
+    errorMessage.value = error.message || 'An error occurred during registration'
+  } finally {
+    loading.value = false
+  }
 }
+
 const onFormSubmit = () => {
   refVform.value.validate().then(({ valid }) => {
-    if (Valid) onSubmit()
+    if (valid) onSubmit() // Fixed typo from 'Valid'
   })
 }
 </script>
 
 <template>
   <v-form ref="refVform" @submit.prevent="onFormSubmit">
+    <v-alert v-if="errorMessage" type="error" class="mb-4">
+      {{ errorMessage }}
+    </v-alert>
+    
     <v-col cols="12" md="12">
       <v-text-field
-        v-model="formData.firsname"
+        v-model="formData.firstname"
         label="Firstname"
         :rules="[requiredValidator]"
       ></v-text-field>
@@ -56,7 +96,7 @@ const onFormSubmit = () => {
         v-model="formData.email"
         label="Email"
         prepend-inner-icon="mdi-email-outline"
-        :rules="[requiredValidator, emailValidator]"
+        :rules="[requiredValidator]"
       ></v-text-field>
     </v-col>
 
@@ -65,7 +105,7 @@ const onFormSubmit = () => {
         v-model="formData.password"
         prepend-inner-icon="mdi-lock-outline"
         label="Password"
-        :type="isPasswordVisible ? 'text' : 'Password'"
+        :type="isPasswordVisible ? 'text' : 'password'"
         :append-inner-icon="isPasswordVisible ? 'mdi-eye-off' : 'mdi-eye'"
         @click:append-inner="isPasswordVisible = !isPasswordVisible"
         :rules="[requiredValidator, passwordValidator]"
@@ -77,7 +117,7 @@ const onFormSubmit = () => {
         v-model="formData.password_confirmation"
         prepend-inner-icon="mdi-lock-outline"
         label="Password Confirmation"
-        :type="isPasswordVisible ? 'text' : 'Password'"
+        :type="isPasswordConfirmation ? 'text' : 'password'"
         :append-inner-icon="isPasswordConfirmation ? 'mdi-eye-off' : 'mdi-eye'"
         @click:append-inner="isPasswordConfirmation = !isPasswordConfirmation"
         :rules="[
@@ -87,8 +127,16 @@ const onFormSubmit = () => {
       ></v-text-field>
     </v-col>
 
-    <v-btn class="mt-2" type="submit" prepend-icon="mdi-account-plus" block color="#EC407A"
-      >Register</v-btn
+    <v-btn 
+      class="mt-2" 
+      type="submit" 
+      prepend-icon="mdi-account-plus" 
+      block 
+      color="#EC407A"
+      :loading="loading"
+      :disabled="loading"
     >
+      Register
+    </v-btn>
   </v-form>
 </template>
