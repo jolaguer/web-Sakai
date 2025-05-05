@@ -1,4 +1,5 @@
-// Form validation rules
+
+// Form validation rues
 export const requiredValidator = (v) => !!v || 'This field is required'
 
 export const emailValidator = (v) => {

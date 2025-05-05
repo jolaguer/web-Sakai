@@ -6,6 +6,7 @@ import {
   confirmValidator,
 } from '@/utils/validators'
 import { ref } from 'vue'
+
 import { supabase } from '@/supabase'
 import { useRouter } from 'vue-router'
 
@@ -22,6 +23,10 @@ const formDataDefault = {
 
 const formData = ref({
   ...formDataDefault,
+})
+
+const formAction = ref({
+  ...formActionDefault
 })
 
 const isPasswordVisible = ref(false)
@@ -60,9 +65,11 @@ const onSubmit = async () => {
   } finally {
     loading.value = false
   }
+
 }
 
 const onFormSubmit = () => {
+
   refVform.value.validate().then(({ valid }) => {
     if (valid) onSubmit() // Fixed typo from 'Valid'
   })
@@ -70,11 +77,14 @@ const onFormSubmit = () => {
 </script>
 
 <template>
-  <v-form ref="refVform" @submit.prevent="onFormSubmit">
-    <v-alert v-if="errorMessage" type="error" class="mb-4">
-      {{ errorMessage }}
-    </v-alert>
-    
+
+  <AlertNotification 
+  :form-success-message="formAction.formSuccessMessage" 
+  :form-error-message="formAction.formErrorMessage"
+  ></AlertNotification>
+
+  <v-form class="mt-5" ref="refVform" @submit.prevent="onFormSubmit">
+    <v-row>
     <v-col cols="12" md="12">
       <v-text-field
         v-model="formData.firstname"
@@ -94,6 +104,7 @@ const onFormSubmit = () => {
     <v-col cols="12" md="12">
       <v-text-field
         v-model="formData.email"
+        type="email"
         label="Email"
         prepend-inner-icon="mdi-email-outline"
         :rules="[requiredValidator]"
@@ -126,7 +137,6 @@ const onFormSubmit = () => {
         ]"
       ></v-text-field>
     </v-col>
-
     <v-btn 
       class="mt-2" 
       type="submit" 
@@ -140,3 +150,4 @@ const onFormSubmit = () => {
     </v-btn>
   </v-form>
 </template>
+
