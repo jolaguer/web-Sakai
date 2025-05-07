@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { supabase } from '@/supabase'
 import { useRouter } from 'vue-router'
 import Dashboard from '@/components/Dashboard.vue'
+import AppLayout from '@/components/layout/AppLayout.vue'
 
 const router = useRouter()
 const user = ref(null)
