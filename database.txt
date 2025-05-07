@@ -1,0 +1,73 @@
+-- Drivers table
+-- Drivers table
+create table drivers (
+    id uuid default uuid_generate_v4() primary key,
+    name text not null,
+    plate_number text not null unique,
+    rickshaw_type text not null check (rickshaw_type in ('standard', 'deluxe')),
+    status text not null check (status in ('available', 'on_trip', 'inactive')),
+    current_lat numeric,
+    current_lng numeric,
+    address text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Trips table
+create table trips (
+    id uuid default uuid_generate_v4() primary key,
+    user_id uuid references auth.users(id) not null,
+    start_point_name text not null,
+    end_point_name text not null,
+    start_lat numeric,
+    start_lng numeric,
+    end_lat numeric,
+    end_lng numeric,
+    status text not null check (status in ('pending', 'in_progress', 'completed', 'cancelled')),
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Bookings table
+create table bookings (
+    id uuid default uuid_generate_v4() primary key,
+    driver_id uuid references drivers(id) not null,
+    trip_id uuid references trips(id) not null,
+    status text not null check (status in ('pending', 'accepted', 'rejected', 'completed', 'cancelled')),
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+
+
+INSERT INTO drivers (name, plate_number, rickshaw_type, status, current_lat, current_lng, address)
+VALUES
+-- Near Butuan City Hall
+('Juan Dela Cruz', 'ABC123', 'standard', 'available', 8.9475, 125.5405, 'Barangay Doongan, near Butuan City Hall'),
+
+-- Along JC Aquino Avenue
+('Maria Santos', 'XYZ789', 'deluxe', 'on_trip', 8.9512, 125.5317, 'JC Aquino Avenue, in front of Robinsons Place Butuan'),
+
+-- Near Libertad area
+('Carlos Reyes', 'LMN456', 'standard', 'available', 8.9584, 125.5346, 'Barangay Libertad, near Libertad National High School'),
+
+-- Ampayon area (near Caraga State University)
+('Ariel Gomez', 'JKL234', 'deluxe', 'available', 8.9748, 125.5973, 'Ampayon, near Caraga State University'),
+
+-- San Vicente area
+('Liza Mendoza', 'DEF345', 'standard', 'inactive', 8.9601, 125.5702, 'Barangay San Vicente, near Butuan Doctors Hospital'),
+
+-- Baan Riverside
+('Henry Lopez', 'GHI678', 'deluxe', 'on_trip', 8.9442, 125.5629, 'Baan Riverside, near Baan Bridge'),
+
+-- Near Gaisano Mall
+('Ricardo Lim', 'TUV112', 'standard', 'available', 8.9518, 125.5280, 'Montilla Boulevard, near Gaisano Mall'),
+
+-- Tiniwisan
+('Angela dela Torre', 'PQR556', 'deluxe', 'available', 8.9611, 125.6100, 'Tiniwisan, Butuan City'),
+
+-- Bancasi (near airport)
+('Jomar Aquino', 'HIJ334', 'standard', 'on_trip', 8.9517, 125.4783, 'Bancasi, near Bancasi Airport'),
+
+-- Bonbon area
+('Karen Padilla', 'NOP998', 'deluxe', 'available', 8.9412, 125.5567, 'Barangay Bonbon, near Agusan Riverbank');
