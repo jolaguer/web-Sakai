@@ -9,28 +9,37 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const rickshawTypeFilter = ref('all')
 
-// Auto Rickshaw type options for filtering
+// Auto Rickshaw type options for filtering - matches database values
 const rickshawTypes = [
   { value: 'all', label: 'All Types' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'deluxe', label: 'Deluxe' }
+  { value: 'standard', label: 'Standard Auto' },
+  { value: 'deluxe', label: 'Deluxe Auto' }
 ]
 
-// Status options for filtering - Fixed the value for "on-trip" to match database
+// Status options for filtering - matches database values exactly
 const statusOptions = [
   { value: 'all', label: 'All Status' },
   { value: 'available', label: 'Available' },
-  { value: 'on_trip', label: 'On Trip' },  // Changed from 'on-trip' to 'on_trip'
+  { value: 'on_trip', label: 'On Trip' },
   { value: 'inactive', label: 'Inactive' }
 ]
 
-// Status badge colors - Updated to match the correct database value
+// Status badge colors and icons
 const getStatusColor = (status) => {
   switch (status) {
     case 'available': return 'success'
-    case 'on_trip': return 'info'     // Changed from 'on-trip' to 'on_trip'
+    case 'on_trip': return 'info'
     case 'inactive': return 'grey'
     default: return 'grey'
+  }
+}
+
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'available': return 'mdi-check-circle'
+    case 'on_trip': return 'mdi-car-connected'
+    case 'inactive': return 'mdi-close-circle'
+    default: return 'mdi-help-circle'
   }
 }
 
@@ -38,7 +47,7 @@ const filteredDrivers = computed(() => {
   return drivers.value.filter(driver => {
     // Filter by search query
     const matchesSearch = driver.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                          driver.plate_number.toLowerCase().includes(searchQuery.value.toLowerCase())
+                         driver.plate_number.toLowerCase().includes(searchQuery.value.toLowerCase())
     
     // Filter by status
     const matchesStatus = statusFilter.value === 'all' || driver.status === statusFilter.value
@@ -60,6 +69,7 @@ const fetchDrivers = async () => {
     const { data, error } = await supabase
       .from('drivers')
       .select('*')
+      .order('created_at', { ascending: false })
     
     if (error) throw error
     
@@ -72,15 +82,19 @@ const fetchDrivers = async () => {
   }
 }
 
-// Helper function to determine rickshaw type color based on driver index
-const getRickshawColor = (index) => {
-  // Use gradient colors matching the booking theme
-  return index % 2 === 0 ? 'rgba(26, 42, 108, 0.8)' : 'rgba(178, 31, 31, 0.8)'
+// Helper function to get rickshaw type color
+const getRickshawColor = (type) => {
+  return type === 'standard' ? 'primary' : 'secondary'
 }
 
-// Helper function to determine rickshaw type name based on driver index
+// Helper function to get rickshaw type icon
+const getRickshawIcon = (type) => {
+  return type === 'standard' ? 'mdi-car-3-plus' : 'mdi-car-estate'
+}
+
+// Helper function to format rickshaw type name
 const getRickshawType = (type) => {
-  return type === 'standard' ? 'Standard' : 'Deluxe'
+  return type === 'standard' ? 'Standard Auto' : 'Deluxe Auto'
 }
 
 // Rating placeholder (since we don't have actual ratings in the data)
@@ -201,8 +215,8 @@ const getRandomRating = () => {
           >
             <div class="driver-card">
               <div class="d-flex align-items-center pa-4">
-                <v-avatar :color="getRickshawColor(index)" class="text-white mr-3" size="48">
-                  <v-icon size="24">{{ index % 2 === 0 ? 'mdi-car-3-plus' : 'mdi-car-estate' }}</v-icon>
+                <v-avatar :color="getRickshawColor(driver.rickshaw_type)" class="text-white mr-3" size="48">
+                  <v-icon size="24">{{ getRickshawIcon(driver.rickshaw_type) }}</v-icon>
                 </v-avatar>
                 <div>
                   <div class="text-h6 text-white font-weight-medium">{{ driver.name }}</div>
@@ -230,7 +244,7 @@ const getRandomRating = () => {
                     size="small"
                     :color="getStatusColor(driver.status)"
                     variant="flat"
-                    prepend-icon="mdi-circle-small"
+                    :prepend-icon="getStatusIcon(driver.status)"
                     class="text-capitalize"
                   >
                     {{ driver.status.replace('_', ' ') }}
@@ -238,9 +252,10 @@ const getRandomRating = () => {
                   
                   <v-chip
                     size="small"
-                    :color="getRickshawColor(index)"
+                    :color="getRickshawColor(driver.rickshaw_type)"
                     class="ml-2 text-white"
                     variant="flat"
+                    :prepend-icon="getRickshawIcon(driver.rickshaw_type)"
                   >
                     {{ getRickshawType(driver.rickshaw_type) }}
                   </v-chip>
@@ -249,6 +264,11 @@ const getRandomRating = () => {
                 <div class="d-flex align-center mt-3">
                   <v-icon size="small" color="#fdbb2d" class="mr-2">mdi-phone</v-icon>
                   <span class="text-body-2 text-white opacity-80">{{ driver.phone }}</span>
+                </div>
+
+                <div class="d-flex align-center mt-2">
+                  <v-icon size="small" color="#fdbb2d" class="mr-2">mdi-map-marker</v-icon>
+                  <span class="text-body-2 text-white opacity-80">{{ driver.address }}</span>
                 </div>
               </v-card-text>
               
@@ -265,28 +285,34 @@ const getRandomRating = () => {
               { title: 'Driver', key: 'name', align: 'start' },
               { title: 'Auto Type', key: 'rickshaw_type', align: 'start' },
               { title: 'Plate Number', key: 'plate_number', align: 'start' },
+              { title: 'Address', key: 'address', align: 'start' },
               { title: 'Status', key: 'status', align: 'start' },
-              { title: 'Phone', key: 'phone', align: 'start' }
+              { title: 'Created At', key: 'created_at', align: 'start' }
             ]"
             :items="filteredDrivers"
             :loading="loading"
             class="rounded-lg dark-table"
           >
-            <template v-slot:item.name="{ item, index }">
+            <template v-slot:item.name="{ item }">
               <div class="d-flex align-center">
-                <v-avatar size="36" :color="getRickshawColor(index)" class="text-white mr-3">
-                  <v-icon>mdi-account</v-icon>
+                <v-avatar size="36" :color="getRickshawColor(item.rickshaw_type)" class="text-white mr-3">
+                  <v-icon>{{ getRickshawIcon(item.rickshaw_type) }}</v-icon>
                 </v-avatar>
                 <span class="font-weight-medium text-white">{{ item.name }}</span>
               </div>
             </template>
             
-            <template v-slot:item.rickshaw_type="{ item, index }">
+            <template v-slot:item.rickshaw_type="{ item }">
               <div class="d-flex align-center">
-                <v-avatar :color="getRickshawColor(index)" class="text-white mr-2" size="24">
-                  <v-icon size="small">mdi-car-3-plus</v-icon>
-                </v-avatar>
-                <span class="text-capitalize text-white">{{ getRickshawType(item.rickshaw_type) }}</span>
+                <v-chip
+                  size="small"
+                  :color="getRickshawColor(item.rickshaw_type)"
+                  class="text-white"
+                  variant="flat"
+                  :prepend-icon="getRickshawIcon(item.rickshaw_type)"
+                >
+                  {{ getRickshawType(item.rickshaw_type) }}
+                </v-chip>
               </div>
             </template>
             
@@ -295,6 +321,7 @@ const getRandomRating = () => {
                 :color="getStatusColor(item.status)"
                 size="small"
                 variant="flat"
+                :prepend-icon="getStatusIcon(item.status)"
                 class="text-capitalize"
               >
                 {{ item.status.replace('_', ' ') }}
@@ -304,9 +331,16 @@ const getRandomRating = () => {
             <template v-slot:item.plate_number="{ item }">
               <span class="text-white opacity-80">{{ item.plate_number }}</span>
             </template>
+
+            <template v-slot:item.address="{ item }">
+              <div class="d-flex align-center">
+                <v-icon size="small" color="#fdbb2d" class="mr-2">mdi-map-marker</v-icon>
+                <span class="text-white opacity-80">{{ item.address }}</span>
+              </div>
+            </template>
             
-            <template v-slot:item.phone="{ item }">
-              <span class="text-white opacity-80">{{ item.phone }}</span>
+            <template v-slot:item.created_at="{ item }">
+              <span class="text-white opacity-80">{{ new Date(item.created_at).toLocaleDateString() }}</span>
             </template>
           </v-data-table>
         </div>

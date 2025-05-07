@@ -1,6 +1,28 @@
 <script setup>
-import { ref, inject, onMounted, computed } from 'vue'
+import { ref, inject, onMounted, computed, watch } from 'vue'
 import { supabase } from '@/supabase'
+import { LMap, LTileLayer, LMarker, LPopup, LControl } from '@vue-leaflet/vue-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+import { OpenStreetMapProvider } from 'leaflet-geosearch'
+
+// Fix for default marker icons in Leaflet with Vite
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+// Custom marker icons
+const currentLocationIcon = L.icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+})
 
 const props = defineProps({
   user: {
@@ -13,25 +35,34 @@ const loading = ref(false)
 const bookingSuccess = ref(false)
 const errorMessage = ref('')
 
+// Map related state
+const map = ref(null)
+const zoom = ref(13)
+const center = ref([8.9475, 125.5406]) // Butuan City coordinates
+const startMarker = ref(null)
+const endMarker = ref(null)
+const showStartMap = ref(false)
+const showEndMap = ref(false)
+const searchQuery = ref('')
+const searchResults = ref([])
+const currentLocation = ref(null)
+const isSearching = ref(false)
+const provider = new OpenStreetMapProvider()
+const showRouteMap = ref(true)
+
+// Driver related state
+const availableDrivers = ref([])
+const selectedDriverId = ref(null)
+const selectedRickshawType = ref('standard')
+const showDriverLocations = ref(true)
+
 // Form data
 const startPoint = ref('')
 const endPoint = ref('')
-const selectedDriverId = ref(null)
-const selectedRickshawType = ref('standard')
+const startCoordinates = ref({ lat: null, lng: null })
+const endCoordinates = ref({ lat: null, lng: null })
 
-
-// Data from database
-const availableDrivers = ref([])
-const filteredDrivers = computed(() => {
-  return availableDrivers.value.filter(driver => 
-    driver.status === 'available'
-  )
-})
-
-onMounted(async () => {
-  await fetchAvailableDrivers()
-})
-
+// Fetch available drivers
 const fetchAvailableDrivers = async () => {
   try {
     loading.value = true
@@ -39,6 +70,7 @@ const fetchAvailableDrivers = async () => {
       .from('drivers')
       .select('*')
       .eq('status', 'available')
+      .eq('rickshaw_type', selectedRickshawType.value)
     
     if (error) throw error
     
@@ -51,9 +83,95 @@ const fetchAvailableDrivers = async () => {
   }
 }
 
+// Watch for rickshaw type changes
+watch(selectedRickshawType, () => {
+  fetchAvailableDrivers()
+  selectedDriverId.value = null
+})
+
+onMounted(async () => {
+  await fetchAvailableDrivers()
+})
+
+const handleMapClick = (event, isStart) => {
+  const { lat, lng } = event.latlng
+  if (isStart) {
+    startCoordinates.value = { lat, lng }
+    startPoint.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  } else {
+    endCoordinates.value = { lat, lng }
+    endPoint.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+}
+
+const handleMarkerDrag = (event, isStart) => {
+  const { lat, lng } = event.target.getLatLng()
+  if (isStart) {
+    startCoordinates.value = { lat, lng }
+    startPoint.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  } else {
+    endCoordinates.value = { lat, lng }
+    endPoint.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+}
+
+const searchLocation = async () => {
+  if (!searchQuery.value) return
+  
+  try {
+    isSearching.value = true
+    const results = await provider.search({ query: searchQuery.value })
+    searchResults.value = results
+    
+    if (results.length > 0) {
+      const { y: lat, x: lng } = results[0]
+      center.value = [lat, lng]
+      zoom.value = 15
+    }
+  } catch (error) {
+    console.error('Search error:', error)
+    errorMessage.value = 'Failed to search location'
+  } finally {
+    isSearching.value = false
+  }
+}
+
+const selectSearchResult = (result, isStart) => {
+  const { y: lat, x: lng, label } = result
+  if (isStart) {
+    startCoordinates.value = { lat, lng }
+    startPoint.value = label
+  } else {
+    endCoordinates.value = { lat, lng }
+    endPoint.value = label
+  }
+  searchQuery.value = ''
+  searchResults.value = []
+}
+
+const getCurrentLocation = () => {
+  if (!navigator.geolocation) {
+    errorMessage.value = 'Geolocation is not supported by your browser'
+    return
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords
+      currentLocation.value = { lat: latitude, lng: longitude }
+      center.value = [latitude, longitude]
+      zoom.value = 15
+    },
+    (error) => {
+      console.error('Geolocation error:', error)
+      errorMessage.value = 'Failed to get current location'
+    }
+  )
+}
+
 const handleBooking = async () => {
   if (!startPoint.value || !endPoint.value || !selectedDriverId.value) {
-    errorMessage.value = 'Please fill in all required fields'
+    errorMessage.value = 'Please select pickup location, destination, and a driver'
     return
   }
   
@@ -69,11 +187,11 @@ const handleBooking = async () => {
           user_id: props.user.id,
           start_point_name: startPoint.value,
           end_point_name: endPoint.value,
-          // You would add coordinates here in a real app
-          start_lat: 0,
-          start_lng: 0,
-          end_lat: 0,
-          end_lng: 0
+          start_lat: startCoordinates.value.lat,
+          start_lng: startCoordinates.value.lng,
+          end_lat: endCoordinates.value.lat,
+          end_lng: endCoordinates.value.lng,
+          status: 'pending'
         }
       ])
       .select()
@@ -98,7 +216,7 @@ const handleBooking = async () => {
     // 3. Update driver status
     const { error: driverError } = await supabase
       .from('drivers')
-      .update({ status: 'on-trip' })
+      .update({ status: 'on_trip' })
       .eq('id', selectedDriverId.value)
     
     if (driverError) throw driverError
@@ -109,6 +227,8 @@ const handleBooking = async () => {
     // Reset form
     startPoint.value = ''
     endPoint.value = ''
+    startCoordinates.value = { lat: null, lng: null }
+    endCoordinates.value = { lat: null, lng: null }
     selectedDriverId.value = null
     
     // Refresh drivers list
@@ -127,6 +247,8 @@ const resetForm = () => {
   errorMessage.value = ''
   startPoint.value = ''
   endPoint.value = ''
+  startCoordinates.value = { lat: null, lng: null }
+  endCoordinates.value = { lat: null, lng: null }
   selectedDriverId.value = null
 }
 
@@ -140,6 +262,16 @@ const getRickshawColor = (index) => {
 const getRickshawType = (index) => {
   return index % 2 === 0 ? 'Standard' : 'Deluxe'
 }
+
+// Custom marker icon for drivers
+const driverMarkerIcon = L.icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+})
 </script>
 
 <template>
@@ -150,7 +282,7 @@ const getRickshawType = (index) => {
           <v-icon class="mr-2" color="#fdbb2d">mdi-car-3-plus</v-icon>
           Book an Auto Rickshaw
         </v-card-title>
-        <v-card-subtitle class="text-subtitle-1 text-white opacity-80 mt-1">Safe & comfortable rides at your fingertips</v-card-subtitle>
+        <v-card-subtitle class="text-subtitle-1 text-white opacity-80 mt-1">Safe & comfortable rides in Butuan City</v-card-subtitle>
       </v-card-item>
       
       <v-card-text>
@@ -198,7 +330,7 @@ const getRickshawType = (index) => {
         <div v-if="!bookingSuccess" class="glass-container mb-6">
           <v-img
             src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/download.jpg-pvUUUs3UPbD2GSn0jXsqMeEtME8k5S.jpeg"
-            height="250"
+            height="200"
             class="rounded-lg"
             cover
             gradient="to bottom, rgba(26, 42, 108, 0.3), rgba(178, 31, 31, 0.3), rgba(253, 187, 45, 0.3)"
@@ -214,29 +346,6 @@ const getRickshawType = (index) => {
         </div>
         
         <v-form v-if="!bookingSuccess" class="mt-6">
-         
-          
-          <v-chip-group
-            v-model="selectedRickshawType"
-            selected-class="selected-type"
-            mandatory
-            class="mb-6 rickshaw-type-group"
-          >
-            <v-chip
-              v-for="type in rickshawTypes"
-              :key="type.value"
-              :value="type.value"
-              filter
-              variant="elevated"
-              :color="type.color"
-              size="large"
-              class="pa-6 type-chip"
-            >
-              <v-icon start size="large" class="mr-2">{{ type.icon }}</v-icon>
-              {{ type.label }} Auto
-            </v-chip>
-          </v-chip-group>
-          
           <v-row class="mt-4">
             <v-col cols="12" md="6">
               <v-text-field
@@ -244,11 +353,13 @@ const getRickshawType = (index) => {
                 label="Pickup Location"
                 variant="outlined"
                 prepend-inner-icon="mdi-map-marker"
-                placeholder="Enter pickup address"
+                placeholder="Click to select location on map"
                 :rules="[v => !!v || 'Pickup location is required']"
                 bg-color="rgba(255, 255, 255, 0.1)"
                 color="accent"
                 class="rounded-lg input-field"
+                readonly
+                @click="showStartMap = true"
               ></v-text-field>
             </v-col>
             
@@ -258,32 +369,179 @@ const getRickshawType = (index) => {
                 label="Destination"
                 variant="outlined"
                 prepend-inner-icon="mdi-map-marker-check"
-                placeholder="Enter destination address"
+                placeholder="Click to select location on map"
                 :rules="[v => !!v || 'Destination is required']"
                 bg-color="rgba(255, 255, 255, 0.1)"
                 color="accent"
                 class="rounded-lg input-field"
+                readonly
+                @click="showEndMap = true"
               ></v-text-field>
             </v-col>
           </v-row>
-          
+
+          <!-- Route Map -->
+          <div class="route-map-container mt-4">
+            <div class="map-container">
+              <l-map
+                v-model="map"
+                :zoom="zoom"
+                :center="center"
+              >
+                <l-tile-layer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  layer-type="base"
+                  name="OpenStreetMap"
+                ></l-tile-layer>
+                
+                <l-marker
+                  v-if="startCoordinates.lat"
+                  :lat-lng="[startCoordinates.lat, startCoordinates.lng]"
+                >
+                  <l-popup>Pickup Location</l-popup>
+                </l-marker>
+                
+                <l-marker
+                  v-if="endCoordinates.lat"
+                  :lat-lng="[endCoordinates.lat, endCoordinates.lng]"
+                >
+                  <l-popup>Destination</l-popup>
+                </l-marker>
+                
+                <l-marker
+                  v-if="currentLocation"
+                  :lat-lng="[currentLocation.lat, currentLocation.lng]"
+                  :icon="currentLocationIcon"
+                >
+                  <l-popup>Your Current Location</l-popup>
+                </l-marker>
+              </l-map>
+            </div>
+          </div>
+
+          <!-- Rickshaw Type Selection -->
           <v-card-subtitle class="px-1 font-weight-bold text-uppercase text-white opacity-80 mt-6">
-            Available Auto Rickshaw Drivers
+            Select Rickshaw Type
+          </v-card-subtitle>
+          
+          <v-chip-group
+            v-model="selectedRickshawType"
+            selected-class="selected-type"
+            mandatory
+            class="mb-6 rickshaw-type-group"
+          >
+            <v-chip
+              value="standard"
+              filter
+              variant="elevated"
+              color="primary"
+              size="large"
+              class="pa-6 type-chip"
+            >
+              <v-icon start size="large" class="mr-2">mdi-car-3-plus</v-icon>
+              Standard Auto
+            </v-chip>
+            <v-chip
+              value="deluxe"
+              filter
+              variant="elevated"
+              color="secondary"
+              size="large"
+              class="pa-6 type-chip"
+            >
+              <v-icon start size="large" class="mr-2">mdi-car-estate</v-icon>
+              Deluxe Auto
+            </v-chip>
+          </v-chip-group>
+
+          <!-- Available Drivers Map -->
+          <div class="glass-container mb-6" v-if="showDriverLocations">
+            <v-card-title class="text-h6 text-white d-flex align-center justify-space-between">
+              <div>
+                <v-icon color="#fdbb2d" class="mr-2">mdi-map-marker-multiple</v-icon>
+                Available Drivers Location
+              </div>
+              <v-switch
+                v-model="showDriverLocations"
+                color="#fdbb2d"
+                hide-details
+                density="compact"
+              ></v-switch>
+            </v-card-title>
+            <v-card-text>
+              <div class="map-container">
+                <l-map
+                  v-model="map"
+                  :zoom="zoom"
+                  :center="center"
+                >
+                  <l-tile-layer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    layer-type="base"
+                    name="OpenStreetMap"
+                  ></l-tile-layer>
+                  
+                  <!-- Driver Markers -->
+                  <l-marker
+                    v-for="driver in availableDrivers"
+                    :key="driver.id"
+                    :lat-lng="[driver.current_lat, driver.current_lng]"
+                    :icon="driverMarkerIcon"
+                  >
+                    <l-popup>
+                      <div class="driver-popup">
+                        <div class="text-subtitle-2 font-weight-bold">{{ driver.name }}</div>
+                        <div class="text-caption">{{ driver.plate_number }}</div>
+                        <div class="text-caption">{{ driver.address }}</div>
+                        <v-btn
+                          size="small"
+                          color="primary"
+                          class="mt-2"
+                          @click="selectedDriverId = driver.id"
+                        >
+                          Select Driver
+                        </v-btn>
+                      </div>
+                    </l-popup>
+                  </l-marker>
+                  
+                  <!-- Start and End Markers -->
+                  <l-marker
+                    v-if="startCoordinates.lat"
+                    :lat-lng="[startCoordinates.lat, startCoordinates.lng]"
+                  >
+                    <l-popup>Pickup Location</l-popup>
+                  </l-marker>
+                  
+                  <l-marker
+                    v-if="endCoordinates.lat"
+                    :lat-lng="[endCoordinates.lat, endCoordinates.lng]"
+                  >
+                    <l-popup>Destination</l-popup>
+                  </l-marker>
+                </l-map>
+              </div>
+            </v-card-text>
+          </div>
+
+          <!-- Available Drivers List -->
+          <v-card-subtitle class="px-1 font-weight-bold text-uppercase text-white opacity-80 mt-6">
+            Available Drivers
           </v-card-subtitle>
           
           <div v-if="loading" class="d-flex justify-center my-8">
             <v-progress-circular indeterminate color="#fdbb2d" size="48" width="4"></v-progress-circular>
           </div>
           
-          <div v-else-if="filteredDrivers.length === 0" class="text-center my-8 pa-8 rounded-lg no-drivers-container">
+          <div v-else-if="availableDrivers.length === 0" class="text-center my-8 pa-8 rounded-lg no-drivers-container">
             <v-icon size="48" color="rgba(255, 255, 255, 0.7)" class="mb-4">mdi-car-off</v-icon>
-            <div class="text-body-1 text-white opacity-80">No auto rickshaw drivers available at the moment.</div>
-            <div class="text-caption text-white opacity-60 mt-2">Please try again later</div>
+            <div class="text-body-1 text-white opacity-80">No {{ selectedRickshawType }} auto rickshaw drivers available at the moment.</div>
+            <div class="text-caption text-white opacity-60 mt-2">Please try again later or select a different type</div>
           </div>
           
           <v-row v-else>
             <v-col
-              v-for="(driver, index) in filteredDrivers"
+              v-for="driver in availableDrivers"
               :key="driver.id"
               cols="12"
               sm="6"
@@ -295,8 +553,8 @@ const getRickshawType = (index) => {
                 @click="selectedDriverId = driver.id"
               >
                 <div class="d-flex align-items-center pa-4">
-                  <v-avatar :color="getRickshawColor(index)" class="text-white mr-3" size="48">
-                    <v-icon size="24">{{ index % 2 === 0 ? 'mdi-car-3-plus' : 'mdi-car-estate' }}</v-icon>
+                  <v-avatar :color="driver.rickshaw_type === 'standard' ? 'primary' : 'secondary'" class="text-white mr-3" size="48">
+                    <v-icon size="24">{{ driver.rickshaw_type === 'standard' ? 'mdi-car-3-plus' : 'mdi-car-estate' }}</v-icon>
                   </v-avatar>
                   <div>
                     <div class="text-h6 text-white font-weight-medium">{{ driver.name }}</div>
@@ -304,38 +562,22 @@ const getRickshawType = (index) => {
                   </div>
                 </div>
                 
-                <v-card-text class="pb-0 pt-0">
-                  <div class="d-flex align-center">
-                    <v-rating
-                      readonly
-                      :model-value="4.7"
-                      color="#fdbb2d"
-                      size="small"
-                      half-increments
-                      density="compact"
-                    ></v-rating>
-                    <span class="ml-1 text-caption text-white opacity-80">4.7</span>
-                  </div>
-                </v-card-text>
-                
                 <v-card-text class="pt-0">
-                  <v-chip
-                    size="small"
-                    color="success"
-                    variant="flat"
-                    prepend-icon="mdi-check-circle"
-                  >
-                    Available
-                  </v-chip>
+                  <div class="d-flex align-center flex-wrap gap-2">
+                    <v-chip
+                      size="small"
+                      :color="driver.rickshaw_type === 'standard' ? 'primary' : 'secondary'"
+                      class="text-white"
+                      variant="flat"
+                    >
+                      {{ driver.rickshaw_type === 'standard' ? 'Standard' : 'Deluxe' }}
+                    </v-chip>
+                  </div>
                   
-                  <v-chip
-                    size="small"
-                    :color="getRickshawColor(index)"
-                    class="ml-2 text-white"
-                    variant="flat"
-                  >
-                    {{ getRickshawType(index) }}
-                  </v-chip>
+                  <div class="d-flex align-center mt-3">
+                    <v-icon size="small" color="#fdbb2d" class="mr-2">mdi-map-marker</v-icon>
+                    <span class="text-body-2 text-white opacity-80">{{ driver.address }}</span>
+                  </div>
                 </v-card-text>
                 
                 <v-divider class="opacity-20"></v-divider>
@@ -354,6 +596,155 @@ const getRickshawType = (index) => {
               </div>
             </v-col>
           </v-row>
+
+          <!-- Map Dialogs -->
+          <v-dialog v-model="showStartMap" max-width="800">
+            <v-card class="map-dialog">
+              <v-card-title class="text-h6">Select Pickup Location in Butuan City</v-card-title>
+              <v-card-text>
+                <div class="map-controls mb-4">
+                  <v-text-field
+                    v-model="searchQuery"
+                    placeholder="Search location in Butuan City..."
+                    prepend-inner-icon="mdi-magnify"
+                    @keyup.enter="searchLocation"
+                    class="search-field"
+                    hide-details
+                    density="compact"
+                  >
+                    <template v-slot:append>
+                      <v-btn
+                        icon="mdi-crosshairs-gps"
+                        variant="text"
+                        @click="getCurrentLocation"
+                        :loading="isSearching"
+                      ></v-btn>
+                    </template>
+                  </v-text-field>
+                  
+                  <v-list v-if="searchResults.length > 0" class="search-results">
+                    <v-list-item
+                      v-for="result in searchResults"
+                      :key="result.raw.place_id"
+                      @click="selectSearchResult(result, true)"
+                    >
+                      <v-list-item-title>{{ result.label }}</v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </div>
+                
+                <div class="map-container">
+                  <l-map
+                    v-model="map"
+                    :zoom="zoom"
+                    :center="center"
+                    @click="(e) => handleMapClick(e, true)"
+                  >
+                    <l-tile-layer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      layer-type="base"
+                      name="OpenStreetMap"
+                    ></l-tile-layer>
+                    
+                    <l-marker
+                      v-if="startCoordinates.lat"
+                      :lat-lng="[startCoordinates.lat, startCoordinates.lng]"
+                      :draggable="true"
+                      @dragend="(e) => handleMarkerDrag(e, true)"
+                    >
+                      <l-popup>Pickup Location</l-popup>
+                    </l-marker>
+                    
+                    <l-marker
+                      v-if="currentLocation"
+                      :lat-lng="[currentLocation.lat, currentLocation.lng]"
+                      :icon="currentLocationIcon"
+                    >
+                      <l-popup>Your Current Location</l-popup>
+                    </l-marker>
+                  </l-map>
+                </div>
+              </v-card-text>
+              <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn color="primary" @click="showStartMap = false">Confirm Location</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
+
+          <v-dialog v-model="showEndMap" max-width="800">
+            <v-card class="map-dialog">
+              <v-card-title class="text-h6">Select Destination in Butuan City</v-card-title>
+              <v-card-text>
+                <div class="map-controls mb-4">
+                  <v-text-field
+                    v-model="searchQuery"
+                    placeholder="Search location in Butuan City..."
+                    prepend-inner-icon="mdi-magnify"
+                    @keyup.enter="searchLocation"
+                    class="search-field"
+                    hide-details
+                    density="compact"
+                  >
+                    <template v-slot:append>
+                      <v-btn
+                        icon="mdi-crosshairs-gps"
+                        variant="text"
+                        @click="getCurrentLocation"
+                        :loading="isSearching"
+                      ></v-btn>
+                    </template>
+                  </v-text-field>
+                  
+                  <v-list v-if="searchResults.length > 0" class="search-results">
+                    <v-list-item
+                      v-for="result in searchResults"
+                      :key="result.raw.place_id"
+                      @click="selectSearchResult(result, false)"
+                    >
+                      <v-list-item-title>{{ result.label }}</v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </div>
+                
+                <div class="map-container">
+                  <l-map
+                    v-model="map"
+                    :zoom="zoom"
+                    :center="center"
+                    @click="(e) => handleMapClick(e, false)"
+                  >
+                    <l-tile-layer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      layer-type="base"
+                      name="OpenStreetMap"
+                    ></l-tile-layer>
+                    
+                    <l-marker
+                      v-if="endCoordinates.lat"
+                      :lat-lng="[endCoordinates.lat, endCoordinates.lng]"
+                      :draggable="true"
+                      @dragend="(e) => handleMarkerDrag(e, false)"
+                    >
+                      <l-popup>Destination</l-popup>
+                    </l-marker>
+                    
+                    <l-marker
+                      v-if="currentLocation"
+                      :lat-lng="[currentLocation.lat, currentLocation.lng]"
+                      :icon="currentLocationIcon"
+                    >
+                      <l-popup>Your Current Location</l-popup>
+                    </l-marker>
+                  </l-map>
+                </div>
+              </v-card-text>
+              <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn color="primary" @click="showEndMap = false">Confirm Location</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
         </v-form>
       </v-card-text>
       
@@ -507,5 +898,129 @@ const getRickshawType = (index) => {
   border-color: rgba(76, 175, 80, 0.9) !important;
   color: #ffffff !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.route-map-container {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.map-container {
+  height: 300px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-dialog {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.map-dialog :deep(.v-card-title) {
+  color: white;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.map-dialog :deep(.v-card-text) {
+  padding: 0;
+}
+
+.map-dialog :deep(.v-card-actions) {
+  padding: 16px;
+}
+
+/* Leaflet specific styles */
+:deep(.leaflet-container) {
+  background: #242424;
+}
+
+:deep(.leaflet-popup-content-wrapper) {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+:deep(.leaflet-popup-tip) {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+:deep(.leaflet-control-zoom) {
+  border: none !important;
+  background: rgba(0, 0, 0, 0.8) !important;
+  backdrop-filter: blur(10px);
+}
+
+:deep(.leaflet-control-zoom a) {
+  color: white !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+:deep(.leaflet-control-zoom a:hover) {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.map-controls {
+  position: relative;
+  z-index: 1000;
+}
+
+.search-field {
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.search-field :deep(.v-field__input) {
+  color: white !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+.search-field :deep(.v-field__outline) {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.9);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.search-results :deep(.v-list-item) {
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-results :deep(.v-list-item:hover) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.driver-popup {
+  padding: 8px;
+  min-width: 200px;
+}
+
+.driver-popup .text-subtitle-2 {
+  color: #1a2a6c;
+  margin-bottom: 4px;
+}
+
+.driver-popup .text-caption {
+  color: #666;
+  margin-bottom: 2px;
 }
 </style>

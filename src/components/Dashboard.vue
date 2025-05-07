@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import VehicleBooking from './VehicleBooking.vue'
 import TripHistory from './TripHistory.vue'
 import DriverList from './DriverList.vue'
+import CurrentBooking from './CurrentBooking.vue'
 
 const router = useRouter()
 const drawer = ref(true)
@@ -18,6 +19,7 @@ const welcomeMessage = ref('')
 // Navigation items
 const items = [
   { title: 'Book an Auto', value: 'booking', icon: 'mdi-car-outline', color: 'blue-darken-4' },
+  { title: 'Current Booking', value: 'currentBooking', icon: 'mdi-map-marker-check', color: 'green-darken-2' },
   { title: 'Available Drivers', value: 'drivers', icon: 'mdi-account-group-outline', color: 'red-darken-1' },
   { title: 'Trip History', value: 'history', icon: 'mdi-history', color: 'amber-darken-2' }
 ]
@@ -259,6 +261,7 @@ watch(showWelcome, (newVal) => {
             <v-slide-y-transition mode="out-in">
               <component 
                 :is="activeTab === 'booking' ? VehicleBooking : 
+                     activeTab === 'currentBooking' ? CurrentBooking : 
                      activeTab === 'drivers' ? DriverList : 
                      TripHistory"
                 :user="activeTab !== 'drivers' ? user : undefined"
